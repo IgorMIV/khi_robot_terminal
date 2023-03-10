@@ -1,8 +1,8 @@
 import socket
 import atexit
 
-IP = "127.0.0.1"    # IP for K-Roset
-PORT = 9105         # Port for K-Roset
+IP = "192.168.1.11"    # IP for K-Roset
+PORT = 23         # Port for K-Roset
 
 error_counter_limit = 1000000
 footer_message = bytes.fromhex('0a')
@@ -19,7 +19,6 @@ class KhiRoTerm:
         if self.connect() != 1:
             print("Can't establish connection with robot")
         else:
-            print("Connection established")
             while True:
                 command_text = input()
 
@@ -29,23 +28,22 @@ class KhiRoTerm:
                     self.server.sendall(command_text.encode())
                     self.server.sendall(footer_message)
 
-                # self.server.sendall(command_text.encode())
-                # self.server.sendall(footer_message)
-
                 counter = 0
                 while True:
                     receive_string = self.server.recv(4096, socket.MSG_PEEK)
                     counter += 1
-                    # print(counter, receive_string.decode("utf-8", 'ignore'), receive_string.hex())
-
-                    if receive_string.find(b'\x3e') >= 0:
-                        receive_string = self.server.recv(4096)
-                        print(receive_string.decode("utf-8", 'ignore'))
-                        break
+                    # print("|", receive_string[-3:0].hex())
 
                     if receive_string.find(b'\x0d\x0a') >= 0:
                         receive_string = self.server.recv(4096)
-                        print(receive_string.decode("utf-8", 'ignore'))
+                        print(receive_string.decode("utf-8", 'ignore'), end='')
+                        # print("STATE2")
+                        break
+
+                    if receive_string.find(b'\x3e') >= 0:
+                        receive_string = self.server.recv(4096)
+                        print(receive_string.decode("utf-8", 'ignore'), end='')
+                        # print("STATE1")
                         break
 
     def safe_exit(self):
@@ -62,6 +60,7 @@ class KhiRoTerm:
             receive_string = self.server.recv(4096, socket.MSG_PEEK)
             if receive_string.find(b'login:') > -1:     # Wait 'login:' message from robot
                 receive_string = self.server.recv(4096)
+                print(receive_string.decode("utf-8", 'ignore'), end='')
                 break
             if error_counter > error_counter_limit:
                 print("Connection timeout error - 1")
@@ -77,6 +76,7 @@ class KhiRoTerm:
             receive_string = self.server.recv(4096, socket.MSG_PEEK)
             if receive_string.find(b'\x3e') > -1:     # This is AS monitor terminal..  Wait '>' sign from robot
                 receive_string = self.server.recv(4096)
+                print(receive_string.decode("utf-8", 'ignore'), end='')
                 return 1
             if error_counter > error_counter_limit:
                 print("Connection timeout error - 2")
