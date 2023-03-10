@@ -1,2 +1,2 @@
 # khi_robot_terminal
-Kawasaki Robot Terminal based on Pytrhon
+Kawasaki Robot Terminal based on Python
