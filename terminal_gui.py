@@ -1,5 +1,6 @@
 import sys
 import socket
+import select
 import atexit
 
 from PyQt6.QtWidgets import QWidget, QLabel, QPushButton, QVBoxLayout, QHBoxLayout, QMainWindow, QApplication
@@ -34,34 +35,6 @@ class KhiRoTerm:
             self.timer.timeout.connect(self.timer_timeout)
             self.timer.start()
 
-            # while True:
-            #     if self.command_buffer is not None:
-            #         if self.command_buffer == '':
-            #             self.server.sendall(footer_message)
-            #         else:
-            #             self.server.sendall(self.command_buffer.encode())
-            #             self.server.sendall(footer_message)
-            #
-            #         self.command_buffer = None
-            #
-            #         counter = 0
-            #         while True:
-            #             receive_string = self.server.recv(4096, socket.MSG_PEEK)
-            #             counter += 1
-            #             # print("|", receive_string[-3:0].hex())
-            #
-            #             if receive_string.find(b'\x0d\x0a') >= 0:
-            #                 receive_string = self.server.recv(4096)
-            #                 print(receive_string.decode("utf-8", 'ignore'), end='')
-            #                 # print("STATE2")
-            #                 break
-            #
-            #             if receive_string.find(b'\x3e') >= 0:
-            #                 receive_string = self.server.recv(4096)
-            #                 print(receive_string.decode("utf-8", 'ignore'), end='')
-            #                 # print("STATE1")
-            #                 break
-
     def timer_timeout(self):
         if self.command_buffer is not None:
             if self.command_buffer == '':
@@ -71,30 +44,21 @@ class KhiRoTerm:
                 self.server.sendall(footer_message)
 
             self.command_buffer = None
-        print("IN")
-        receive_string = self.server.recv(0, socket.MSG_PEEK)
-        print("OUT")
-        # if len(receive_string) > 0:
-        #     receive_string = self.server.recv(4096)
-        #     self.parent.print_text(receive_string.decode("utf-8", 'ignore'))
 
-            # counter = 0
-            # while True:
-            #     receive_string = self.server.recv(4096, socket.MSG_PEEK)
-            #     counter += 1
-            #     # print("|", receive_string[-3:0].hex())
-            #
-            #     if receive_string.find(b'\x0d\x0a') >= 0:
-            #         receive_string = self.server.recv(4096)
-            #         print(receive_string.decode("utf-8", 'ignore'), end='')
-            #         # print("STATE2")
-            #         break
-            #
-            #     if receive_string.find(b'\x3e') >= 0:
-            #         receive_string = self.server.recv(4096)
-            #         print(receive_string.decode("utf-8", 'ignore'), end='')
-            #         # print("STATE1")
-            #         break
+        try:
+            ready_to_read, ready_to_write, in_error = select.select([self.server, ], [], [], 0.01)
+        except select.error:
+            print('Transmission error')
+        else:
+            if len(in_error) > 0:
+                return -1
+            if len(ready_to_read) > 0:
+                try:
+                    recv = self.server.recv(4096)
+                except:
+                    print('Receive error')
+
+                self.parent.print_text(recv.decode("utf-8", 'ignore'))
 
     def send_command(self, command):
         self.command_buffer = command
@@ -107,39 +71,53 @@ class KhiRoTerm:
         self.server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.server.connect((self.ip_address, self.port_number))
 
-        error_counter = 0
-        while True:
-            error_counter += 1
-            receive_string = self.server.recv(4096, socket.MSG_PEEK)
-            if receive_string.find(b'login:') > -1:     # Wait 'login:' message from robot
-                receive_string = self.server.recv(4096)
-                self.parent.print_text(receive_string.decode("utf-8", 'ignore'))
-                print(receive_string.decode("utf-8", 'ignore'), end='')
-                break
-            if error_counter > error_counter_limit:
-                print("Connection timeout error - 1")
-                self.server.close()
-                return -1000
+        kawasaki_msg = self.wait_recv([b'login:'], timeout=1)
+        self.parent.print_text(kawasaki_msg.decode("utf-8", 'ignore'))
 
         self.server.sendall(b'as')
         self.server.sendall(b'\x0d\x0a')
 
-        error_counter = 0
-        while True:
-            error_counter += 1
-            receive_string = self.server.recv(4096, socket.MSG_PEEK)
-            if receive_string.find(b'\x3e') > -1:     # This is AS monitor terminal..  Wait '>' sign from robot
-                receive_string = self.server.recv(4096)
-                self.parent.print_text(receive_string.decode("utf-8", 'ignore'))
-                print(receive_string.decode("utf-8", 'ignore'), end='')
-                return 1
-            if error_counter > error_counter_limit:
-                print("Connection timeout error - 2")
-                self.server.close()
-                return -1000
+        kawasaki_msg = self.wait_recv([b'\x3e'], timeout=1)
+        self.parent.print_text(kawasaki_msg.decode("utf-8", 'ignore'))
+
+        return 1
 
     def close_connection(self):
         self.server.close()
+
+    def wait_recv(self, ends_list, timeout=0.01):
+        break_actual = False
+        while True:
+            try:
+                ready_to_read, ready_to_write, in_error = select.select([self.server, ], [], [], timeout)
+            except select.error:
+                print('Transmission error')
+            else:
+                if len(in_error) > 0:
+                    print('Transmission error')
+                    return -1
+                if len(ready_to_read) > 0:
+                    incoming = b''
+                    while True:
+                        if break_actual:
+                            break
+                        try:
+                            recv = self.server.recv(1)
+                        except:
+                            print('Transmission error')
+                            break_actual = True
+                            break
+                        if recv == b'':
+                            break
+                        incoming += recv
+                        for eom in ends_list:
+                            if incoming.find(eom) > -1:     # Wait eom message from robot
+                                break_actual = True
+                                break
+            if break_actual:
+                break
+        # print(incoming)
+        return incoming
 
 
 class MainWindow(QMainWindow):
@@ -340,6 +318,7 @@ class MainWindow(QMainWindow):
 
     def print_text(self, text):
         self.text_terminal.insertPlainText(text)
+        self.text_terminal.verticalScrollBar().setValue(self.text_terminal.verticalScrollBar().maximum())
 
     def eventFilter(self, obj, event):
         if event.type() == QEvent.Type.KeyPress and obj is self.text_line:
@@ -356,5 +335,6 @@ if __name__ == '__main__':
     ex = MainWindow()
     ex.setWindowTitle("Kawasaki terminal")
     ex.setMinimumSize(800, 400)
+    ex.setBaseSize(800, 600)
     ex.show()
     sys.exit(app.exec())
