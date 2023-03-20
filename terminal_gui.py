@@ -8,7 +8,7 @@ from PyQt6.QtCore import QEvent, Qt, QTimer
 
 step = 1.0
 
-IP = "192.168.1.11"    # IP for K-Roset
+IP = "192.168.1.100"    # IP for K-Roset
 PORT = 23         # Port for K-Roset
 
 error_counter_limit = 1000000
@@ -16,9 +16,10 @@ footer_message = bytes.fromhex('0a')
 
 
 class KhiRoTerm:
-    def __init__(self, ip, port):
+    def __init__(self, ip, port, parent):
         self.ip_address = ip
         self.port_number = port
+        self.parent = parent
         self.server = None
 
         self.command_buffer = None
@@ -62,37 +63,40 @@ class KhiRoTerm:
             #                 break
 
     def timer_timeout(self):
-        print("Timeout")
-        pass
-        # while True:
-        #     if self.command_buffer is not None:
-        #         if self.command_buffer == '':
-        #             self.server.sendall(footer_message)
-        #         else:
-        #             self.server.sendall(self.command_buffer.encode())
-        #             self.server.sendall(footer_message)
-        #
-        #         self.command_buffer = None
-        #
-        #         counter = 0
-        #         while True:
-        #             receive_string = self.server.recv(4096, socket.MSG_PEEK)
-        #             counter += 1
-        #             # print("|", receive_string[-3:0].hex())
-        #
-        #             if receive_string.find(b'\x0d\x0a') >= 0:
-        #                 receive_string = self.server.recv(4096)
-        #                 print(receive_string.decode("utf-8", 'ignore'), end='')
-        #                 # print("STATE2")
-        #                 break
-        #
-        #             if receive_string.find(b'\x3e') >= 0:
-        #                 receive_string = self.server.recv(4096)
-        #                 print(receive_string.decode("utf-8", 'ignore'), end='')
-        #                 # print("STATE1")
-        #                 break
+        if self.command_buffer is not None:
+            if self.command_buffer == '':
+                self.server.sendall(footer_message)
+            else:
+                self.server.sendall(self.command_buffer.encode())
+                self.server.sendall(footer_message)
 
-    def get_command(self, command):
+            self.command_buffer = None
+        print("IN")
+        receive_string = self.server.recv(0, socket.MSG_PEEK)
+        print("OUT")
+        # if len(receive_string) > 0:
+        #     receive_string = self.server.recv(4096)
+        #     self.parent.print_text(receive_string.decode("utf-8", 'ignore'))
+
+            # counter = 0
+            # while True:
+            #     receive_string = self.server.recv(4096, socket.MSG_PEEK)
+            #     counter += 1
+            #     # print("|", receive_string[-3:0].hex())
+            #
+            #     if receive_string.find(b'\x0d\x0a') >= 0:
+            #         receive_string = self.server.recv(4096)
+            #         print(receive_string.decode("utf-8", 'ignore'), end='')
+            #         # print("STATE2")
+            #         break
+            #
+            #     if receive_string.find(b'\x3e') >= 0:
+            #         receive_string = self.server.recv(4096)
+            #         print(receive_string.decode("utf-8", 'ignore'), end='')
+            #         # print("STATE1")
+            #         break
+
+    def send_command(self, command):
         self.command_buffer = command
 
     def safe_exit(self):
@@ -109,6 +113,7 @@ class KhiRoTerm:
             receive_string = self.server.recv(4096, socket.MSG_PEEK)
             if receive_string.find(b'login:') > -1:     # Wait 'login:' message from robot
                 receive_string = self.server.recv(4096)
+                self.parent.print_text(receive_string.decode("utf-8", 'ignore'))
                 print(receive_string.decode("utf-8", 'ignore'), end='')
                 break
             if error_counter > error_counter_limit:
@@ -125,6 +130,7 @@ class KhiRoTerm:
             receive_string = self.server.recv(4096, socket.MSG_PEEK)
             if receive_string.find(b'\x3e') > -1:     # This is AS monitor terminal..  Wait '>' sign from robot
                 receive_string = self.server.recv(4096)
+                self.parent.print_text(receive_string.decode("utf-8", 'ignore'))
                 print(receive_string.decode("utf-8", 'ignore'), end='')
                 return 1
             if error_counter > error_counter_limit:
@@ -265,7 +271,7 @@ class MainWindow(QMainWindow):
         water_layout.addWidget(self.label_water)
         water_layout.addWidget(button_water_down)
 
-        khiroterm = KhiRoTerm(IP, PORT)
+        self.khiroterm = KhiRoTerm(IP, PORT, self)
 
 
     def button_white_up_function(self):
@@ -332,21 +338,15 @@ class MainWindow(QMainWindow):
         self.water_compensation = self.water_compensation - step
         self.label_water.setText(str(self.water_compensation))
 
+    def print_text(self, text):
+        self.text_terminal.insertPlainText(text)
+
     def eventFilter(self, obj, event):
-        if event.type() == QEvent.Type.KeyPress and obj is self.text_terminal:
-            pass
-            # if event.key() == 16777220 and self.text_terminal.hasFocus():
-            #     string_text = self.text_terminal.toPlainText().split('\n')[-1]
-            #     print(string_text)
-            #     print('Enter pressed')
         if event.type() == QEvent.Type.KeyPress and obj is self.text_line:
             if event.key() == 16777220 and self.text_line.hasFocus():
-                # string_text = self.text_terminal.toPlainText().split('\n')[-1]
-                # print(string_text)
-                # print('Enter pressed')
                 command = self.text_line.text()
                 self.text_line.clear()
-                self.text_terminal.insertPlainText(command + "\n")
+                self.khiroterm.send_command(command)
         return super().eventFilter(obj, event)
 
 
