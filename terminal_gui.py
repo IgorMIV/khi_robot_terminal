@@ -4,7 +4,7 @@ import atexit
 
 from PyQt6.QtWidgets import QWidget, QLabel, QPushButton, QVBoxLayout, QHBoxLayout, QMainWindow, QApplication
 from PyQt6.QtWidgets import QPlainTextEdit, QLineEdit
-from PyQt6.QtCore import QEvent, Qt
+from PyQt6.QtCore import QEvent, Qt, QTimer
 
 step = 1.0
 
@@ -14,43 +14,86 @@ PORT = 23         # Port for K-Roset
 error_counter_limit = 1000000
 footer_message = bytes.fromhex('0a')
 
+
 class KhiRoTerm:
     def __init__(self, ip, port):
         self.ip_address = ip
         self.port_number = port
         self.server = None
 
+        self.command_buffer = None
+
         atexit.register(self.safe_exit)
 
         if self.connect() != 1:
             print("Can't establish connection with robot")
         else:
-            while True:
-                command_text = input()
+            self.timer = QTimer()
+            self.timer.setInterval(100)
+            self.timer.timeout.connect(self.timer_timeout)
+            self.timer.start()
 
-                if command_text == '':
-                    self.server.sendall(footer_message)
-                else:
-                    self.server.sendall(command_text.encode())
-                    self.server.sendall(footer_message)
+            # while True:
+            #     if self.command_buffer is not None:
+            #         if self.command_buffer == '':
+            #             self.server.sendall(footer_message)
+            #         else:
+            #             self.server.sendall(self.command_buffer.encode())
+            #             self.server.sendall(footer_message)
+            #
+            #         self.command_buffer = None
+            #
+            #         counter = 0
+            #         while True:
+            #             receive_string = self.server.recv(4096, socket.MSG_PEEK)
+            #             counter += 1
+            #             # print("|", receive_string[-3:0].hex())
+            #
+            #             if receive_string.find(b'\x0d\x0a') >= 0:
+            #                 receive_string = self.server.recv(4096)
+            #                 print(receive_string.decode("utf-8", 'ignore'), end='')
+            #                 # print("STATE2")
+            #                 break
+            #
+            #             if receive_string.find(b'\x3e') >= 0:
+            #                 receive_string = self.server.recv(4096)
+            #                 print(receive_string.decode("utf-8", 'ignore'), end='')
+            #                 # print("STATE1")
+            #                 break
 
-                counter = 0
-                while True:
-                    receive_string = self.server.recv(4096, socket.MSG_PEEK)
-                    counter += 1
-                    # print("|", receive_string[-3:0].hex())
+    def timer_timeout(self):
+        print("Timeout")
+        pass
+        # while True:
+        #     if self.command_buffer is not None:
+        #         if self.command_buffer == '':
+        #             self.server.sendall(footer_message)
+        #         else:
+        #             self.server.sendall(self.command_buffer.encode())
+        #             self.server.sendall(footer_message)
+        #
+        #         self.command_buffer = None
+        #
+        #         counter = 0
+        #         while True:
+        #             receive_string = self.server.recv(4096, socket.MSG_PEEK)
+        #             counter += 1
+        #             # print("|", receive_string[-3:0].hex())
+        #
+        #             if receive_string.find(b'\x0d\x0a') >= 0:
+        #                 receive_string = self.server.recv(4096)
+        #                 print(receive_string.decode("utf-8", 'ignore'), end='')
+        #                 # print("STATE2")
+        #                 break
+        #
+        #             if receive_string.find(b'\x3e') >= 0:
+        #                 receive_string = self.server.recv(4096)
+        #                 print(receive_string.decode("utf-8", 'ignore'), end='')
+        #                 # print("STATE1")
+        #                 break
 
-                    if receive_string.find(b'\x0d\x0a') >= 0:
-                        receive_string = self.server.recv(4096)
-                        print(receive_string.decode("utf-8", 'ignore'), end='')
-                        # print("STATE2")
-                        break
-
-                    if receive_string.find(b'\x3e') >= 0:
-                        receive_string = self.server.recv(4096)
-                        print(receive_string.decode("utf-8", 'ignore'), end='')
-                        # print("STATE1")
-                        break
+    def get_command(self, command):
+        self.command_buffer = command
 
     def safe_exit(self):
         if self.server is not None:
