@@ -9,7 +9,7 @@ from PyQt6.QtCore import QEvent, Qt, QTimer
 
 step = 0.5
 
-IP = "192.168.1.100"    # IP for K-Roset
+IP = "192.168.1.11"    # IP for K-Roset
 PORT = 23         # Port for K-Roset
 
 error_counter_limit = 1000000
